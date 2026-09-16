@@ -1,0 +1,137 @@
+name: YouTube Pipeline
+
+"on":
+  schedule:
+    - cron: "0 8 */2 * *"
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Optional exact topic title"
+        required: false
+        type: string
+      issue_number:
+        description: "Optional GitHub Issue number for publish approval"
+        required: false
+        type: string
+      publish_after_approval:
+        description: "Publish latest upload if issue approval passes"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    env:
+      CHANNEL_NICHE: образовательный контент про IT
+      CHANNEL_LANGUAGE: ru
+      PUBLICATION_FREQUENCY: 3 видео в неделю
+      LLM_PROVIDER: openai
+      TTS_PROVIDER: edge-tts
+      THUMBNAIL_PROVIDER: template
+      YOUTUBE_PRIVACY_STATUS: unlisted
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
+      YOUTUBE_CATEGORY_ID: 27
+      YOUTUBE_REGION_CODE: US
+      YOUTUBE_CLIENT_SECRET_PATH: ${{ github.workspace }}/config/client_secret.json
+      YOUTUBE_TOKEN_PATH: ${{ github.workspace }}/config/token.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore OAuth secrets
+        run: |
+          mkdir -p config data/analytics data/audio data/scripts data/thumbnails data/videos assets/backgrounds assets/music
+          printf '%s' '${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}' > config/client_secret.json
+          printf '%s' '${{ secrets.YOUTUBE_TOKEN_JSON }}' > config/token.json
+
+      - name: Research topics
+        run: python scripts/topic_research.py
+
+      - name: Select topic
+        id: select_topic
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.topic }}" ]; then
+            topic="${{ inputs.topic }}"
+          else
+            topic="$(python -c 'import sys; from pathlib import Path; sys.path.insert(0, str(Path("scripts").resolve())); from common import DATA_DIR, pick_topic_argument; print(pick_topic_argument(None, DATA_DIR / "topics.json")["title"])')"
+          fi
+          printf '%s' "$topic" > data/selected_topic.txt
+          echo "topic=$topic" >> "$GITHUB_OUTPUT"
+
+      - name: Generate script
+        run: python scripts/generate_script.py --topic "${{ steps.select_topic.outputs.topic }}"
+
+      - name: Generate narration
+        run: python scripts/generate_tts.py --topic "${{ steps.select_topic.outputs.topic }}"
+
+      - name: Build video
+        run: python scripts/build_video.py --topic "${{ steps.select_topic.outputs.topic }}"
+
+      - name: Generate thumbnail
+        run: python scripts/generate_thumbnail.py --topic "${{ steps.select_topic.outputs.topic }}"
+
+      - name: Upload to YouTube
+        run: python scripts/upload_youtube.py --topic "${{ steps.select_topic.outputs.topic }}"
+
+      - name: Fetch previous-day analytics report
+        run: python scripts/fetch_analytics.py --latest
+
+      - name: Optional publish approval
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_after_approval && inputs.issue_number != '' }}
+        shell: bash
+        run: |
+          python scripts/check_publish_approval.py --issue-number "${{ inputs.issue_number }}"
+          python -c 'import json, sys; from pathlib import Path; data = json.loads(Path("data/publish_approval.json").read_text(encoding="utf-8")); sys.stderr.write("" if data["approved"] else "Publish approval not granted.\n"); sys.exit(0 if data["approved"] else 1)'
+          python scripts/publish_video.py --latest --privacy-status public
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-pipeline-artifacts
+          path: |
+            data/topics.json
+            data/scripts
+            data/audio
+            data/videos
+            data/thumbnails
+            data/upload_log.json
+            data/latest_upload.json
+            data/analytics
+
+      - name: Notify Telegram
+        if: always() && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        shell: bash
+        run: |
+          status="${{ job.status }}"
+          topic="$(cat data/selected_topic.txt 2>/dev/null || true)"
+          video_id="$(python -c 'import json; from pathlib import Path; path = Path("data/latest_upload.json"); print(json.loads(path.read_text(encoding="utf-8")).get("video_id", "") if path.exists() else "")')"
+          curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=YouTube pipeline: ${status}\nTopic: ${topic}\nVideo ID: ${video_id}"
