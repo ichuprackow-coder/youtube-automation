@@ -8,10 +8,11 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from scripts.bootstrap_local import upsert_line
-from scripts.build_video import escape_ffmpeg_filter_path, format_srt_timestamp, write_subtitles
+from scripts.build_video import build_ffmpeg_command, escape_ffmpeg_filter_path, format_srt_timestamp, write_subtitles
 from scripts.check_publish_approval import main as check_publish_approval_main
 from scripts.common import extract_keywords, is_demo_mode, pick_topic_argument, slugify
 from scripts.generate_script import generate_script_demo
+from scripts.generate_thumbnail import generate_prompt
 from scripts.generate_tts import demo_synthesize, elevenlabs_synthesize, main as generate_tts_main
 from scripts.topic_research import build_demo_videos, generate_topic_ideas_demo
 from scripts.upload_youtube import save_dry_run, upload_video
@@ -112,6 +113,18 @@ class PipelineHelpersTest(unittest.TestCase):
         finally:
             output_path.unlink(missing_ok=True)
 
+    def test_build_ffmpeg_command_maps_input_audio_without_music(self) -> None:
+        command = build_ffmpeg_command(
+            [Path("bg1.png")],
+            Path("audio.mp3"),
+            Path("subtitles.srt"),
+            None,
+            Path("output.mp4"),
+            10.0,
+        )
+        map_indexes = [index for index, value in enumerate(command) if value == "-map"]
+        self.assertEqual(command[map_indexes[-1] + 1], "1:a")
+
     @patch("scripts.generate_tts.requests.post")
     def test_elevenlabs_synthesize_uses_expected_payload(self, post: MagicMock) -> None:
         post.return_value.raise_for_status.return_value = None
@@ -144,6 +157,10 @@ class PipelineHelpersTest(unittest.TestCase):
         self.assertIn("hook", payload)
         self.assertEqual(len(payload["outline"]), 3)
         self.assertIn("tags", payload)
+
+    def test_generate_thumbnail_prompt_uses_demo_fallback(self) -> None:
+        prompt = generate_prompt({"topic": "Demo topic", "thumbnail_text": "TEXT", "title": "Title"}, demo_mode=True)
+        self.assertIn("Demo topic", prompt)
 
     @patch("scripts.generate_tts.shutil.which", return_value="/usr/bin/ffmpeg")
     @patch("scripts.generate_tts.subprocess.run")

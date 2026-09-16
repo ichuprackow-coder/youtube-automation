@@ -32,7 +32,7 @@ def main() -> None:
     run_command([python, "scripts/generate_script.py", "--topic", selected_topic, *demo_flag])
     run_command([python, "scripts/generate_tts.py", "--topic", selected_topic, *demo_flag])
     run_command([python, "scripts/build_video.py", "--topic", selected_topic])
-    run_command([python, "scripts/generate_thumbnail.py", "--topic", selected_topic])
+    run_command([python, "scripts/generate_thumbnail.py", "--topic", selected_topic, *demo_flag])
     if args.upload_dry_run:
         run_command([python, "scripts/upload_youtube.py", "--topic", selected_topic, "--dry-run"])
 

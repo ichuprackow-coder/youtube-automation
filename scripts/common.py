@@ -79,7 +79,7 @@ def save_json(path: Path, payload: Any) -> None:
 
 def require_env(name: str) -> str:
     value = os.getenv(name)
-    if not value:
+    if not value or value.strip() == "<SECRET>":
         raise RuntimeError(f"Environment variable {name} is required.")
     return value
 

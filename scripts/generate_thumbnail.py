@@ -9,11 +9,13 @@ import textwrap
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-from common import DATA_DIR, ensure_dir, llm_chat, load_environment, load_json, require_env, save_json, slugify
+from common import DATA_DIR, ensure_dir, is_demo_mode, llm_chat, load_environment, load_json, require_env, save_json, slugify
 
 
-def generate_prompt(script_payload: dict) -> str:
-    if not os.getenv("OPENAI_API_KEY") and not os.getenv("GEMINI_API_KEY"):
+def generate_prompt(script_payload: dict, *, demo_mode: bool = False) -> str:
+    if demo_mode or os.getenv("OPENAI_API_KEY", "").strip() == "<SECRET>" or os.getenv("GEMINI_API_KEY", "").strip() == "<SECRET>" or (
+        not os.getenv("OPENAI_API_KEY") and not os.getenv("GEMINI_API_KEY")
+    ):
         return (
             f"Контрастное YouTube-превью для темы '{script_payload['topic']}', "
             f"крупный текст '{script_payload['thumbnail_text']}', современный IT-визуал."
@@ -63,6 +65,7 @@ def draw_template(script_payload: dict, width: int, height: int, base_image: Ima
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate a thumbnail image for a script.")
     parser.add_argument("--topic", required=True, help="Topic title or slug")
+    parser.add_argument("--demo", action="store_true", help="Use local prompt fallback without external image or LLM APIs.")
     args = parser.parse_args()
 
     load_environment()
@@ -75,12 +78,13 @@ def main() -> None:
     width = int(os.getenv("THUMBNAIL_WIDTH", "1280"))
     height = int(os.getenv("THUMBNAIL_HEIGHT", "720"))
     size = f"{width}x{height}"
-    thumbnail_prompt = generate_prompt(script_payload)
+    demo_mode = is_demo_mode(args.demo)
+    thumbnail_prompt = generate_prompt(script_payload, demo_mode=demo_mode)
     script_payload["thumbnail_prompt"] = thumbnail_prompt
 
     provider = os.getenv("THUMBNAIL_PROVIDER", "template").lower()
     base_image = None
-    if provider == "openai":
+    if provider == "openai" and not demo_mode:
         base_image = generate_openai_image(thumbnail_prompt, size)
     elif provider != "template":
         raise RuntimeError(f"Unsupported THUMBNAIL_PROVIDER={provider}")

@@ -137,7 +137,7 @@ def build_ffmpeg_command(
         filter_parts.append(f"[{scene_count}:a][music]amix=inputs=2:duration=first:dropout_transition=2[audio]")
         audio_map = "[audio]"
     else:
-        audio_map = f"[{scene_count}:a]"
+        audio_map = f"{scene_count}:a"
 
     command.extend(
         [
