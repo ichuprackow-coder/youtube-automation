@@ -16,7 +16,7 @@ def collect_youtube_tag_hints(topic: str) -> list[str]:
             "q": topic,
             "type": "video",
             "maxResults": 10,
-            "regionCode": os.getenv("YOUTUBE_REGION_CODE", "RU"),
+            "regionCode": os.getenv("YOUTUBE_REGION_CODE", "US"),
         },
     )
     texts = []
@@ -94,4 +94,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

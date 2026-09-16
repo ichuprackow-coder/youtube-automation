@@ -17,7 +17,7 @@ def fetch_trending_videos(niche: str, max_results: int) -> list[dict]:
             "type": "video",
             "order": "viewCount",
             "maxResults": max_results,
-            "regionCode": os.getenv("YOUTUBE_REGION_CODE", "RU"),
+            "regionCode": os.getenv("YOUTUBE_REGION_CODE", "US"),
             "publishedAfter": published_after,
         },
     )

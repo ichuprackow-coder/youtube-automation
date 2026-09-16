@@ -114,6 +114,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+# при необходимости поменяйте YOUTUBE_REGION_CODE на поддерживаемый рынок вашего канала
 python scripts/topic_research.py --niche "образовательный контент про IT"
 ```
 

@@ -36,6 +36,11 @@ def load_credentials() -> Credentials:
         return creds
     if os.getenv("CI"):
         raise RuntimeError("Missing or invalid OAuth token in CI. Save config/token.json into YOUTUBE_TOKEN_JSON.")
+    if not client_secret_path.exists():
+        raise RuntimeError(
+            f"OAuth client secret file not found: {client_secret_path}. "
+            "Download it from Google Cloud Console and save it to config/client_secret.json."
+        )
     flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
     creds = flow.run_local_server(port=0)
     ensure_dir(token_path.parent)

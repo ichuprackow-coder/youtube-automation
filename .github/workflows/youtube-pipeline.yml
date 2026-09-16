@@ -45,7 +45,7 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       YOUTUBE_PLAYLIST_ID: ${{ secrets.YOUTUBE_PLAYLIST_ID }}
       YOUTUBE_CATEGORY_ID: 27
-      YOUTUBE_REGION_CODE: RU
+      YOUTUBE_REGION_CODE: US
       YOUTUBE_CLIENT_SECRET_PATH: ${{ github.workspace }}/config/client_secret.json
       YOUTUBE_TOKEN_PATH: ${{ github.workspace }}/config/token.json
     steps:
@@ -81,6 +81,7 @@ jobs:
           else
             topic="$(python -c 'import sys; from pathlib import Path; sys.path.insert(0, str(Path("scripts").resolve())); from common import DATA_DIR, pick_topic_argument; print(pick_topic_argument(None, DATA_DIR / "topics.json")["title"])')"
           fi
+          printf '%s' "$topic" > data/selected_topic.txt
           echo "topic=$topic" >> "$GITHUB_OUTPUT"
 
       - name: Generate script
@@ -129,7 +130,7 @@ jobs:
         shell: bash
         run: |
           status="${{ job.status }}"
-          topic="${{ steps.select_topic.outputs.topic }}"
+          topic="$(cat data/selected_topic.txt 2>/dev/null || true)"
           video_id="$(python -c 'import json; from pathlib import Path; path = Path("data/latest_upload.json"); print(json.loads(path.read_text(encoding="utf-8")).get("video_id", "") if path.exists() else "")')"
           curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
