@@ -50,6 +50,12 @@ def load_environment() -> None:
     load_dotenv(REPO_ROOT / ".env")
 
 
+def is_demo_mode(explicit: bool = False) -> bool:
+    if explicit:
+        return True
+    return os.getenv("DEMO_MODE", "").lower() in {"1", "true", "yes", "on"}
+
+
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path

@@ -5,10 +5,12 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import DATA_DIR, extract_keywords, llm_chat_json, load_environment, load_json, pick_topic_argument, save_json, slugify, youtube_api_get
+from common import DATA_DIR, extract_keywords, is_demo_mode, llm_chat_json, load_environment, load_json, pick_topic_argument, save_json, slugify, youtube_api_get
 
 
-def collect_youtube_tag_hints(topic: str) -> list[str]:
+def collect_youtube_tag_hints(topic: str, *, demo_mode: bool = False) -> list[str]:
+    if demo_mode:
+        return [item["keyword"] for item in extract_keywords([topic, f"{topic} devops ai automation"], limit=8)]
     response = youtube_api_get(
         "search",
         {
@@ -26,8 +28,52 @@ def collect_youtube_tag_hints(topic: str) -> list[str]:
     return [item["keyword"] for item in extract_keywords(texts, limit=10)]
 
 
-def generate_script(topic: dict) -> dict:
-    hints = collect_youtube_tag_hints(topic["title"])
+def generate_script_demo(topic: dict, hints: list[str]) -> dict:
+    title = topic["title"]
+    return {
+        "hook": f"Если вы хотите разобраться в теме '{title}' без воды, это видео даст вам четкий план действий уже сегодня.",
+        "outline": [
+            {
+                "heading": "Почему эта тема важна прямо сейчас",
+                "talking_points": [
+                    "что меняется на рынке",
+                    "какие навыки и инструменты стали обязательными",
+                ],
+            },
+            {
+                "heading": "Пошаговый план внедрения",
+                "talking_points": [
+                    "с чего начать за первый день",
+                    "что сделать за первую неделю",
+                    "как получить измеримый результат",
+                ],
+            },
+            {
+                "heading": "Типичные ошибки и как их избежать",
+                "talking_points": [
+                    "не пытаться автоматизировать все сразу",
+                    "собирать процесс маленькими повторяемыми шагами",
+                ],
+            },
+        ],
+        "cta": "Подпишитесь на канал, чтобы получать новые практические разборы по IT и автоматизации, и заберите чеклист из описания.",
+        "title": title,
+        "description": (
+            f"В этом видео разбираем тему: {title}.\n\n"
+            "Вы получите пошаговый план, типичные ошибки и практические советы для быстрого результата.\n\n"
+            "#IT #DevOps #Automation"
+        ),
+        "thumbnail_text": "ПРОСТОЙ ПЛАН",
+        "tags": list(dict.fromkeys([*topic.get("keywords", []), *hints, "it", "automation"]))[:15],
+        "title_options": [title, f"{title} — с чего начать без ошибок"],
+        "thumbnail_text_options": ["ПРОСТОЙ ПЛАН", "С НУЛЯ ДО РЕЗУЛЬТАТА"],
+    }
+
+
+def generate_script(topic: dict, *, demo_mode: bool = False) -> dict:
+    hints = collect_youtube_tag_hints(topic["title"], demo_mode=demo_mode)
+    if demo_mode:
+        return generate_script_demo(topic, hints)
     prompt = f"""
     Тема: {topic['title']}
     Угол: {topic.get('angle', '')}
@@ -66,18 +112,21 @@ def render_tts_text(script_payload: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate a video script from topics.json")
     parser.add_argument("--topic", help="Exact topic title from data/topics.json")
+    parser.add_argument("--demo", action="store_true", help="Use a deterministic demo script instead of live APIs.")
     args = parser.parse_args()
 
     load_environment()
     topics_path = DATA_DIR / "topics.json"
     topic = pick_topic_argument(args.topic, topics_path)
-    script = generate_script(topic)
+    demo_mode = is_demo_mode(args.demo)
+    script = generate_script(topic, demo_mode=demo_mode)
     slug = slugify(topic["title"])
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "topic": topic["title"],
         "topic_meta": topic,
         "slug": slug,
+        "demo_mode": demo_mode,
         **script,
     }
     payload["tts_text"] = render_tts_text(payload)

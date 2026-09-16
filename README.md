@@ -118,6 +118,29 @@ cp .env.example .env
 python scripts/topic_research.py --niche "образовательный контент про IT"
 ```
 
+### Быстрый локальный preview без ключей
+
+Если хочешь просто посмотреть, как пайплайн работает на локальной машине без реальных API-ключей и без загрузки на YouTube:
+
+```bash
+cd /home/runner/work/youtube-automation/youtube-automation
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python scripts/bootstrap_local.py --demo
+python scripts/run_local_pipeline.py --demo --upload-dry-run
+```
+
+Что получится:
+- `data/topics.json`
+- `data/scripts/*.json`
+- `data/audio/*.mp3`
+- `data/videos/*.mp4`
+- `data/thumbnails/*.png`
+- `data/upload_dry_run.json`
+
+Так можно проверить весь локальный цикл до реальной публикации.
+
 ## Шаг 4. Генерация сценария
 
 Готовый скрипт: [`scripts/generate_script.py`](./scripts/generate_script.py)

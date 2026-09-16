@@ -4,7 +4,7 @@ import argparse
 import os
 from datetime import datetime, timedelta, timezone
 
-from common import DATA_DIR, extract_keywords, llm_chat_json, load_environment, save_json, youtube_api_get
+from common import DATA_DIR, extract_keywords, is_demo_mode, llm_chat_json, load_environment, save_json, youtube_api_get
 
 
 def fetch_trending_videos(niche: str, max_results: int) -> list[dict]:
@@ -90,25 +90,112 @@ def generate_topic_ideas(niche: str, language: str, frequency: str, videos: list
     return result["ideas"]
 
 
+def build_demo_videos(niche: str) -> list[dict]:
+    return [
+        {
+            "video_id": "demo-devops-roadmap",
+            "title": f"{niche}: roadmap для новичка",
+            "description": "Разбор входа в IT, DevOps, AI-инструментов и карьерного плана.",
+            "channel_title": "Demo IT Channel",
+            "published_at": "2026-09-01T09:00:00Z",
+            "tags": ["devops", "roadmap", "it career"],
+            "views": 154000,
+            "likes": 8200,
+            "comments": 640,
+        },
+        {
+            "video_id": "demo-ai-automation",
+            "title": "Как автоматизировать YouTube-канал с AI",
+            "description": "LLM, TTS, FFmpeg и GitHub Actions в одном пайплайне.",
+            "channel_title": "Demo Automation Lab",
+            "published_at": "2026-09-03T12:30:00Z",
+            "tags": ["youtube automation", "ai tools", "github actions"],
+            "views": 98000,
+            "likes": 5100,
+            "comments": 410,
+        },
+        {
+            "video_id": "demo-it-skills",
+            "title": "Какие навыки в IT реально нужны в 2026",
+            "description": "Практический список навыков, стеков и первых проектов.",
+            "channel_title": "Demo Skills Hub",
+            "published_at": "2026-09-05T15:45:00Z",
+            "tags": ["it skills", "career", "2026"],
+            "views": 87000,
+            "likes": 4700,
+            "comments": 380,
+        },
+    ]
+
+
+def generate_topic_ideas_demo(niche: str, language: str, frequency: str, keywords: list[dict]) -> list[dict]:
+    seed_keywords = [item["keyword"] for item in keywords[:5]]
+    return [
+        {
+            "title": "Как войти в DevOps в 2026: пошаговый план",
+            "angle": "Дать новичку реалистичный входной маршрут на 90 дней.",
+            "why_now": f"Спрос на AI-автоматизацию и DevOps растет, а формат {frequency} требует практичных тем.",
+            "keywords": seed_keywords or ["devops", "roadmap", "junior"],
+            "competition": "medium",
+            "target_viewer": "Новичок, который хочет перейти в IT.",
+        },
+        {
+            "title": "5 AI-инструментов, которые экономят часы IT-специалисту",
+            "angle": "Показать реальные сценарии экономии времени в работе.",
+            "why_now": "AI-сервисы быстро меняют повседневные процессы команд.",
+            "keywords": ["ai", "automation", "productivity", *seed_keywords[:2]],
+            "competition": "medium",
+            "target_viewer": "Junior/Middle IT-специалист.",
+        },
+        {
+            "title": "GitHub Actions для новичков: автоматизируем рутину без боли",
+            "angle": "Разобрать GitHub Actions на одном полезном кейсе.",
+            "why_now": "Автоматизация CI/CD стала базовым навыком даже для небольших проектов.",
+            "keywords": ["github actions", "ci cd", "automation"],
+            "competition": "low",
+            "target_viewer": "Разработчик, начинающий DevOps-практику.",
+        },
+        {
+            "title": "Сколько реально нужно учиться, чтобы получить первую работу в IT",
+            "angle": "Честный разбор сроков, ловушек и ожиданий.",
+            "why_now": "Аудитория ищет приземленные карьерные ориентиры без инфоцыганства.",
+            "keywords": ["it career", "roadmap", "first job"],
+            "competition": "high",
+            "target_viewer": "Студент или сменщик профессии.",
+        },
+        {
+            "title": "Как собрать AI-пайплайн для контента своими руками",
+            "angle": "Показать связку LLM + TTS + FFmpeg + GitHub Actions.",
+            "why_now": "Создатели контента массово ищут способы ускорить продакшн.",
+            "keywords": ["youtube automation", "ffmpeg", "llm", "tts"],
+            "competition": "medium",
+            "target_viewer": "Технарь, который хочет автоматизировать контент.",
+        },
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate YouTube topic ideas from trend data.")
     parser.add_argument("--niche")
     parser.add_argument("--max-results", type=int, default=15)
+    parser.add_argument("--demo", action="store_true", help="Use built-in demo data instead of live APIs.")
     args = parser.parse_args()
 
     load_environment()
     niche = args.niche or os.getenv("CHANNEL_NICHE", "образовательный контент про IT")
     language = os.getenv("CHANNEL_LANGUAGE", "ru")
     frequency = os.getenv("PUBLICATION_FREQUENCY", "3 видео в неделю")
-    videos = fetch_trending_videos(niche, args.max_results)
+    demo_mode = is_demo_mode(args.demo)
+    videos = build_demo_videos(niche) if demo_mode else fetch_trending_videos(niche, args.max_results)
     keyword_source = [f"{video['title']} {video['description']}" for video in videos]
     keywords = extract_keywords(keyword_source, limit=15)
-    ideas = generate_topic_ideas(niche, language, frequency, videos, keywords)
+    ideas = generate_topic_ideas_demo(niche, language, frequency, keywords) if demo_mode else generate_topic_ideas(niche, language, frequency, videos, keywords)
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "channel_niche": niche,
         "language": language,
         "publication_frequency": frequency,
+        "demo_mode": demo_mode,
         "source_videos": videos,
         "keyword_analysis": keywords,
         "ideas": ideas,

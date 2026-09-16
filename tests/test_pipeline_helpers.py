@@ -7,16 +7,23 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
+from scripts.bootstrap_local import upsert_line
 from scripts.build_video import escape_ffmpeg_filter_path, format_srt_timestamp, write_subtitles
 from scripts.check_publish_approval import main as check_publish_approval_main
-from scripts.common import extract_keywords, pick_topic_argument, slugify
-from scripts.generate_tts import elevenlabs_synthesize, main as generate_tts_main
-from scripts.upload_youtube import upload_video
+from scripts.common import extract_keywords, is_demo_mode, pick_topic_argument, slugify
+from scripts.generate_script import generate_script_demo
+from scripts.generate_tts import demo_synthesize, elevenlabs_synthesize, main as generate_tts_main
+from scripts.topic_research import build_demo_videos, generate_topic_ideas_demo
+from scripts.upload_youtube import save_dry_run, upload_video
 
 
 class PipelineHelpersTest(unittest.TestCase):
     def test_slugify_keeps_cyrillic(self) -> None:
         self.assertEqual(slugify("Как войти в DevOps в 2026?"), "как-войти-в-devops-в-2026")
+
+    def test_is_demo_mode_from_environment(self) -> None:
+        with patch.dict("os.environ", {"DEMO_MODE": "true"}, clear=False):
+            self.assertTrue(is_demo_mode())
 
     def test_extract_keywords_counts_relevant_words(self) -> None:
         keywords = extract_keywords(["DevOps roadmap для junior DevOps"], limit=2)
@@ -75,6 +82,15 @@ class PipelineHelpersTest(unittest.TestCase):
     def test_srt_timestamp_format(self) -> None:
         self.assertEqual(format_srt_timestamp(65.432), "00:01:05,432")
 
+    def test_upsert_line_replaces_existing_value(self) -> None:
+        env_path = Path("tests/demo.env")
+        env_path.write_text("DEMO_MODE=false\n", encoding="utf-8")
+        try:
+            upsert_line(env_path, "DEMO_MODE", "true")
+            self.assertEqual(env_path.read_text(encoding="utf-8"), "DEMO_MODE=true\n")
+        finally:
+            env_path.unlink(missing_ok=True)
+
     def test_ffmpeg_filter_path_escaping(self) -> None:
         escaped = escape_ffmpeg_filter_path(Path(r"/tmp/it's\test:01.srt"))
         self.assertEqual(escaped, r"/tmp/it\'s\\test\:01.srt")
@@ -116,6 +132,26 @@ class PipelineHelpersTest(unittest.TestCase):
         finally:
             output_path.unlink(missing_ok=True)
 
+    def test_topic_research_demo_generates_ideas(self) -> None:
+        videos = build_demo_videos("IT")
+        keywords = extract_keywords([video["title"] for video in videos], limit=5)
+        ideas = generate_topic_ideas_demo("IT", "ru", "3 видео в неделю", keywords)
+        self.assertEqual(len(ideas), 5)
+        self.assertIn("title", ideas[0])
+
+    def test_generate_script_demo_returns_required_fields(self) -> None:
+        payload = generate_script_demo({"title": "Demo topic", "keywords": ["devops"]}, ["devops", "automation"])
+        self.assertIn("hook", payload)
+        self.assertEqual(len(payload["outline"]), 3)
+        self.assertIn("tags", payload)
+
+    @patch("scripts.generate_tts.shutil.which", return_value="/usr/bin/ffmpeg")
+    @patch("scripts.generate_tts.subprocess.run")
+    def test_demo_synthesize_uses_ffmpeg(self, run: MagicMock, _which: MagicMock) -> None:
+        demo_synthesize("one two three four five six", "demo.mp3")
+        run.assert_called_once()
+        self.assertIn("ffmpeg", run.call_args.args[0][0])
+
     @patch("scripts.generate_tts.elevenlabs_synthesize")
     @patch("scripts.generate_tts.asyncio.run")
     def test_generate_tts_main_routes_to_elevenlabs_provider(self, asyncio_run: MagicMock, elevenlabs: MagicMock) -> None:
@@ -124,7 +160,7 @@ class PipelineHelpersTest(unittest.TestCase):
         script_path.write_text('{"tts_text":"hello"}', encoding="utf-8")
         original_argv = sys.argv
         try:
-            with patch.dict("os.environ", {"TTS_PROVIDER": "elevenlabs"}, clear=False):
+            with patch.dict("os.environ", {"TTS_PROVIDER": "elevenlabs", "DEMO_MODE": "false"}, clear=False):
                 sys.argv = ["generate_tts.py", "--topic", "test topic"]
                 generate_tts_main()
             elevenlabs.assert_called_once()
@@ -173,6 +209,25 @@ class PipelineHelpersTest(unittest.TestCase):
             youtube.playlistItems.return_value.insert.assert_called_once()
         finally:
             for path in [video_path, thumb_path, log_path, latest_path]:
+                path.unlink(missing_ok=True)
+
+    def test_save_dry_run_writes_upload_preview(self) -> None:
+        video_path = Path("data/videos/topic.mp4")
+        thumb_path = Path("data/thumbnails/topic.png")
+        dry_run_path = Path("data/upload_dry_run.json")
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+        thumb_path.write_bytes(b"thumb")
+        try:
+            payload = save_dry_run(
+                {"topic": "Topic", "title": "Title", "description": "Description", "tags": ["tag1"]},
+                "topic",
+            )
+            self.assertEqual(payload["status"]["privacyStatus"], "unlisted")
+            self.assertTrue(dry_run_path.exists())
+        finally:
+            for path in [video_path, thumb_path, dry_run_path]:
                 path.unlink(missing_ok=True)
 
     @patch("scripts.check_publish_approval.get_issue")
