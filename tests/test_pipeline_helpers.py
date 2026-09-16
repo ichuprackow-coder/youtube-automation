@@ -3,11 +3,14 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 import sys
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from scripts.build_video import format_srt_timestamp
+from scripts.build_video import escape_ffmpeg_filter_path, format_srt_timestamp
 from scripts.common import extract_keywords, pick_topic_argument, slugify
+from scripts.generate_tts import elevenlabs_synthesize, main as generate_tts_main
+from scripts.upload_youtube import upload_video
 
 
 class PipelineHelpersTest(unittest.TestCase):
@@ -70,6 +73,89 @@ class PipelineHelpersTest(unittest.TestCase):
 
     def test_srt_timestamp_format(self) -> None:
         self.assertEqual(format_srt_timestamp(65.432), "00:01:05,432")
+
+    def test_ffmpeg_filter_path_escaping(self) -> None:
+        escaped = escape_ffmpeg_filter_path(Path(r"/tmp/it's\test:01.srt"))
+        self.assertEqual(escaped, r"/tmp/it\'s\\test\:01.srt")
+
+    @patch("scripts.generate_tts.requests.post")
+    def test_elevenlabs_synthesize_uses_expected_payload(self, post: MagicMock) -> None:
+        post.return_value.raise_for_status.return_value = None
+        post.return_value.content = b"audio"
+        output_path = Path("tests/elevenlabs.mp3")
+        try:
+            with patch.dict(
+                "os.environ",
+                {"ELEVENLABS_API_KEY": "key", "ELEVENLABS_VOICE_ID": "voice"},
+                clear=False,
+            ):
+                elevenlabs_synthesize("Привет", str(output_path))
+            post.assert_called_once()
+            _, kwargs = post.call_args
+            self.assertEqual(kwargs["json"]["text"], "Привет")
+            self.assertEqual(kwargs["json"]["model_id"], "eleven_multilingual_v2")
+            self.assertEqual(kwargs["headers"]["xi-api-key"], "key")
+        finally:
+            output_path.unlink(missing_ok=True)
+
+    @patch("scripts.generate_tts.elevenlabs_synthesize")
+    @patch("scripts.generate_tts.asyncio.run")
+    def test_generate_tts_main_routes_to_elevenlabs_provider(self, asyncio_run: MagicMock, elevenlabs: MagicMock) -> None:
+        script_path = Path("data/scripts/test-topic.json")
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text('{"tts_text":"hello"}', encoding="utf-8")
+        original_argv = sys.argv
+        try:
+            with patch.dict("os.environ", {"TTS_PROVIDER": "elevenlabs"}, clear=False):
+                sys.argv = ["generate_tts.py", "--topic", "test topic"]
+                generate_tts_main()
+            elevenlabs.assert_called_once()
+            asyncio_run.assert_not_called()
+        finally:
+            sys.argv = original_argv
+            Path("data/audio/test-topic.mp3").unlink(missing_ok=True)
+            script_path.unlink(missing_ok=True)
+
+    @patch("scripts.upload_youtube.load_credentials")
+    @patch("scripts.upload_youtube.build")
+    def test_upload_video_logs_metadata(self, build: MagicMock, _load_credentials: MagicMock) -> None:
+        slug = "topic"
+        video_path = Path("data/videos/topic.mp4")
+        thumb_path = Path("data/thumbnails/topic.png")
+        log_path = Path("data/upload_log.json")
+        latest_path = Path("data/latest_upload.json")
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        video_path.write_bytes(b"video")
+        thumb_path.write_bytes(b"thumb")
+
+        insert_request = MagicMock()
+        insert_request.next_chunk.side_effect = [(None, None), (None, {"id": "video-123"})]
+        youtube = MagicMock()
+        youtube.videos.return_value.insert.return_value = insert_request
+        youtube.thumbnails.return_value.set.return_value.execute.return_value = {}
+        youtube.playlistItems.return_value.insert.return_value.execute.return_value = {}
+        build.return_value = youtube
+
+        try:
+            with patch.dict("os.environ", {"YOUTUBE_PLAYLIST_ID": "playlist-1"}, clear=False):
+                result = upload_video(
+                    {
+                        "topic": "Topic",
+                        "title": "Title",
+                        "description": "Description",
+                        "tags": ["tag1"],
+                    },
+                    slug,
+                )
+            self.assertEqual(result["video_id"], "video-123")
+            self.assertTrue(log_path.exists())
+            self.assertTrue(latest_path.exists())
+            youtube.thumbnails.return_value.set.assert_called_once()
+            youtube.playlistItems.return_value.insert.assert_called_once()
+        finally:
+            for path in [video_path, thumb_path, log_path, latest_path]:
+                path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

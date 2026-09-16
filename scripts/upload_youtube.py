@@ -35,7 +35,10 @@ def load_credentials() -> Credentials:
     if creds and creds.valid:
         return creds
     if os.getenv("CI"):
-        raise RuntimeError("Missing or invalid OAuth token in CI. Save config/token.json into YOUTUBE_TOKEN_JSON.")
+        raise RuntimeError(
+            "Missing or invalid OAuth token in CI. Restore a valid token file at "
+            "YOUTUBE_TOKEN_PATH (or config/token.json in this repository) before running uploads."
+        )
     if not client_secret_path.exists():
         raise RuntimeError(
             f"OAuth client secret file not found: {client_secret_path}. "

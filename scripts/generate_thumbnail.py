@@ -82,6 +82,8 @@ def main() -> None:
     base_image = None
     if provider == "openai":
         base_image = generate_openai_image(thumbnail_prompt, size)
+    elif provider != "template":
+        raise RuntimeError(f"Unsupported THUMBNAIL_PROVIDER={provider}")
 
     thumbnail = draw_template(script_payload, width, height, base_image)
     output_path = DATA_DIR / "thumbnails" / f"{slug}.png"

@@ -40,7 +40,7 @@ def main() -> None:
     args = parser.parse_args()
 
     load_environment()
-    repository = os.getenv("GITHUB_REPOSITORY", require_env("GITHUB_REPOSITORY"))
+    repository = require_env("GITHUB_REPOSITORY")
     owner, repo = repository.split("/", 1)
     token = require_env("GITHUB_TOKEN")
     issue = get_issue(owner, repo, args.issue_number, token)

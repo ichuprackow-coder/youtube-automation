@@ -59,6 +59,10 @@ def format_srt_timestamp(seconds: float) -> str:
     return f"{hours:02}:{minutes:02}:{secs:02},{ms:03}"
 
 
+def escape_ffmpeg_filter_path(path: Path) -> str:
+    return str(path).replace("\\", "\\\\").replace("'", r"\'").replace(":", r"\:")
+
+
 def write_subtitles(script_payload: dict, output_path: Path, total_duration: float) -> None:
     segments = [script_payload["hook"]]
     segments.extend(item["heading"] for item in script_payload["outline"])
@@ -117,7 +121,7 @@ def build_ffmpeg_command(
             offset += scene_duration - transition
         video_label = previous
 
-    subtitle_path = str(subtitles_path).replace(":", r"\:")
+    subtitle_path = escape_ffmpeg_filter_path(subtitles_path)
     filter_parts.append(
         f"{video_label}subtitles='{subtitle_path}':force_style='Alignment=2,Fontsize=22,Outline=1,Shadow=1,MarginV=40'[video]"
     )
@@ -183,4 +187,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

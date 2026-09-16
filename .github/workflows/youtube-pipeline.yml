@@ -103,7 +103,7 @@ jobs:
         run: python scripts/fetch_analytics.py --latest
 
       - name: Optional publish approval
-        if: ${{ inputs.publish_after_approval && inputs.issue_number != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_after_approval && inputs.issue_number != '' }}
         shell: bash
         run: |
           python scripts/check_publish_approval.py --issue-number "${{ inputs.issue_number }}"
