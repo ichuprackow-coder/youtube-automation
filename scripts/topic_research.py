@@ -186,6 +186,9 @@ def main() -> None:
     language = os.getenv("CHANNEL_LANGUAGE", "ru")
     frequency = os.getenv("PUBLICATION_FREQUENCY", "3 видео в неделю")
     demo_mode = is_demo_mode(args.demo)
+    if not demo_mode and not os.getenv("YOUTUBE_API_KEY", "").strip():
+        print("YOUTUBE_API_KEY is not set; switching topic research to demo mode.")
+        demo_mode = True
     videos = build_demo_videos(niche) if demo_mode else fetch_trending_videos(niche, args.max_results)
     keyword_source = [f"{video['title']} {video['description']}" for video in videos]
     keywords = extract_keywords(keyword_source, limit=15)
