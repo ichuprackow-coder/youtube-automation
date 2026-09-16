@@ -14,7 +14,7 @@ from scripts.common import extract_keywords, is_demo_mode, pick_topic_argument, 
 from scripts.generate_script import generate_script_demo
 from scripts.generate_thumbnail import generate_prompt
 from scripts.generate_tts import demo_synthesize, elevenlabs_synthesize, main as generate_tts_main
-from scripts.topic_research import build_demo_videos, generate_topic_ideas_demo
+from scripts.topic_research import build_demo_videos, generate_topic_ideas_demo, main as topic_research_main
 from scripts.upload_youtube import save_dry_run, upload_video
 
 
@@ -151,6 +151,26 @@ class PipelineHelpersTest(unittest.TestCase):
         ideas = generate_topic_ideas_demo("IT", "ru", "3 видео в неделю", keywords)
         self.assertEqual(len(ideas), 5)
         self.assertIn("title", ideas[0])
+
+    @patch("scripts.topic_research.save_json")
+    @patch("scripts.topic_research.generate_topic_ideas_demo", return_value=[{"title": "Demo topic"}])
+    @patch("scripts.topic_research.fetch_trending_videos")
+    def test_topic_research_main_falls_back_to_demo_without_youtube_api_key(
+        self,
+        fetch_trending_videos: MagicMock,
+        _generate_topic_ideas_demo: MagicMock,
+        save_json: MagicMock,
+    ) -> None:
+        original_argv = sys.argv
+        try:
+            with patch.dict("os.environ", {"DEMO_MODE": "false", "YOUTUBE_API_KEY": ""}, clear=False):
+                sys.argv = ["topic_research.py"]
+                topic_research_main()
+            fetch_trending_videos.assert_not_called()
+            payload = save_json.call_args.args[1]
+            self.assertTrue(payload["demo_mode"])
+        finally:
+            sys.argv = original_argv
 
     def test_generate_script_demo_returns_required_fields(self) -> None:
         payload = generate_script_demo({"title": "Demo topic", "keywords": ["devops"]}, ["devops", "automation"])
