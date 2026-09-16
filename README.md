@@ -2,6 +2,8 @@
 
 Готовый каркас для полностью автоматизированного YouTube-пайплайна на GitHub Actions для русскоязычного IT-канала с публикацией **3 видео в неделю**.
 
+Дополнительно в репозитории есть бесплатный **scenario mode**: готовый JSON-сценарий → бесплатная озвучка `edge-tts` → бесплатные scene images через Pollinations → сборка MP4 → загрузка на YouTube.
+
 Выбранный стек:
 - **LLM:** OpenAI Chat Completions (`LLM_PROVIDER=openai`) с опцией Gemini
 - **Озвучка:** `edge-tts` по умолчанию, ElevenLabs опционально
@@ -40,6 +42,7 @@ cd youtube-automation
 ├── data/
 │   ├── analytics/
 │   ├── audio/
+│   ├── images/
 │   ├── scripts/
 │   ├── thumbnails/
 │   └── videos/
@@ -48,10 +51,14 @@ cd youtube-automation
 │   ├── check_publish_approval.py
 │   ├── common.py
 │   ├── fetch_analytics.py
+│   ├── generate_scene_images.py
 │   ├── generate_script.py
 │   ├── generate_thumbnail.py
 │   ├── generate_tts.py
 │   ├── publish_video.py
+│   ├── prepare_scenario.py
+│   ├── run_local_pipeline.py
+│   ├── run_scenario_pipeline.py
 │   ├── topic_research.py
 │   └── upload_youtube.py
 ├── .env.example
@@ -140,6 +147,34 @@ python scripts/run_local_pipeline.py --demo --upload-dry-run
 - `data/upload_dry_run.json`
 
 Так можно проверить весь локальный цикл до реальной публикации.
+
+### Бесплатный scenario mode без платных API
+
+Если сценарий ты генерируешь вручную в чате и хочешь автоматизировать всё остальное без OpenAI/ElevenLabs:
+
+1. Скопируй prompt из [`config/scenario_prompt.txt`](./config/scenario_prompt.txt)
+2. Сохрани ответ модели в JSON-файл, например `scenario.json`
+3. Запусти:
+
+```bash
+python scripts/run_scenario_pipeline.py --scenario-file /absolute/path/to/scenario.json --upload-dry-run
+```
+
+Что делает scenario mode:
+- `prepare_scenario.py` нормализует JSON в формат пайплайна
+- `generate_tts.py` делает MP3 через `edge-tts`
+- `generate_scene_images.py` скачивает scene images через Pollinations, а при ошибке делает локальный placeholder
+- `build_video.py` собирает слайд-шоу по сценам
+- `generate_thumbnail.py` создает thumbnail без платных image API
+- `upload_youtube.py --dry-run` готовит payload для безопасной проверки перед реальной загрузкой
+
+Артефакты:
+- `data/scripts/[slug].json`
+- `data/audio/[slug].mp3`
+- `data/images/[slug]/scene-*.jpg`
+- `data/videos/[slug].mp4`
+- `data/thumbnails/[slug].png`
+- `data/upload_dry_run.json`
 
 ## Шаг 4. Генерация сценария
 

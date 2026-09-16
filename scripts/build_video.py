@@ -14,6 +14,17 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a"}
 
 
+def collect_script_segments(script_payload: dict) -> list[str]:
+    scenes = script_payload.get("scenes") or []
+    if scenes:
+        return [scene["narration"] for scene in scenes if scene.get("narration")]
+
+    segments = [script_payload["hook"]]
+    segments.extend(item["heading"] for item in script_payload["outline"])
+    segments.append(script_payload["cta"])
+    return segments
+
+
 def ffprobe_duration(path: Path) -> float:
     result = subprocess.run(
         [
@@ -64,10 +75,16 @@ def escape_ffmpeg_filter_path(path: Path) -> str:
     return str(path).replace("\\", "\\\\").replace("'", r"\'").replace(":", r"\:")
 
 
+def calculate_segment_durations(segments: list[str], total_duration: float) -> list[float]:
+    if not segments:
+        return [total_duration]
+    word_lengths = [max(len(segment.split()), 1) for segment in segments]
+    total_words = sum(word_lengths)
+    return [total_duration * (words / total_words) for words in word_lengths]
+
+
 def write_subtitles(script_payload: dict, output_path: Path, total_duration: float) -> None:
-    segments = [script_payload["hook"]]
-    segments.extend(item["heading"] for item in script_payload["outline"])
-    segments.append(script_payload["cta"])
+    segments = collect_script_segments(script_payload)
     word_lengths = [max(len(segment.split()), 1) for segment in segments]
     total_words = sum(word_lengths)
     total_ms = max(int(round(total_duration * 1000)), len(segments))
@@ -93,16 +110,18 @@ def build_ffmpeg_command(
     music_path: Path | None,
     output_path: Path,
     total_duration: float,
+    segment_texts: list[str] | None = None,
 ) -> list[str]:
     scene_count = max(len(backgrounds), 1)
     transition = 1.0 if scene_count > 1 else 0.0
-    scene_duration = total_duration / scene_count
+    scene_durations = calculate_segment_durations(segment_texts or ["scene"] * scene_count, total_duration)
     width = 1920
     height = 1080
 
     command = ["ffmpeg", "-y"]
-    for background in backgrounds:
-        command.extend(["-loop", "1", "-t", str(scene_duration + transition), "-i", str(background)])
+    for index, background in enumerate(backgrounds):
+        hold_duration = scene_durations[index] + (transition if index < scene_count - 1 else 0.0)
+        command.extend(["-loop", "1", "-t", str(hold_duration), "-i", str(background)])
     command.extend(["-i", str(audio_path)])
     if music_path:
         command.extend(["-stream_loop", "-1", "-i", str(music_path)])
@@ -117,14 +136,15 @@ def build_ffmpeg_command(
     video_label = "[v0]"
     if scene_count > 1:
         previous = "[v0]"
-        offset = scene_duration - transition
+        offset = scene_durations[0] - transition
         for index in range(1, scene_count):
             next_label = f"[vxf{index}]"
             filter_parts.append(
                 f"{previous}[v{index}]xfade=transition=fade:duration={transition}:offset={max(offset, 0.1):.2f}{next_label}"
             )
             previous = next_label
-            offset += scene_duration - transition
+            if index < scene_count - 1:
+                offset += scene_durations[index] - transition
         video_label = previous
 
     subtitle_path = escape_ffmpeg_filter_path(subtitles_path)
@@ -160,6 +180,24 @@ def build_ffmpeg_command(
     return command
 
 
+def resolve_backgrounds(script_payload: dict, slug: str, scene_count: int, size: tuple[int, int]) -> list[Path]:
+    scenes = script_payload.get("scenes") or []
+    if not scenes:
+        return prepare_backgrounds(scene_count, size)
+
+    scene_dir = DATA_DIR / "images" / slug
+    scene_paths: list[Path | None] = []
+    for index in range(1, scene_count + 1):
+        match = next((scene_dir / f"scene-{index:02d}{suffix}" for suffix in IMAGE_EXTENSIONS if (scene_dir / f"scene-{index:02d}{suffix}").exists()), None)
+        scene_paths.append(match)
+
+    if all(scene_paths):
+        return [path for path in scene_paths if path is not None]
+
+    fallbacks = prepare_backgrounds(scene_count, size)
+    return [path if path is not None else fallbacks[index] for index, path in enumerate(scene_paths)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build a video with FFmpeg from audio and background assets.")
     parser.add_argument("--topic", required=True, help="Topic title or slug")
@@ -173,8 +211,9 @@ def main() -> None:
         raise RuntimeError("Script JSON and MP3 audio must exist before building the video.")
 
     total_duration = ffprobe_duration(audio_path)
-    scene_count = len(script_payload["outline"]) + 2
-    backgrounds = prepare_backgrounds(scene_count, (1920, 1080))
+    segments = collect_script_segments(script_payload)
+    scene_count = len(segments)
+    backgrounds = resolve_backgrounds(script_payload, slug, scene_count, (1920, 1080))
     output_path = DATA_DIR / "videos" / f"{slug}.mp4"
     ensure_dir(output_path.parent)
 
@@ -185,7 +224,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="youtube-pipeline-") as temp_dir:
         subtitles_path = Path(temp_dir) / f"{slug}.srt"
         write_subtitles(script_payload, subtitles_path, total_duration)
-        command = build_ffmpeg_command(backgrounds, audio_path, subtitles_path, music_path, output_path, total_duration)
+        command = build_ffmpeg_command(backgrounds, audio_path, subtitles_path, music_path, output_path, total_duration, segment_texts=segments)
         subprocess.run(command, check=True)
 
     print(f"Saved video to {output_path}")

@@ -8,12 +8,13 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from scripts.bootstrap_local import upsert_line
-from scripts.build_video import build_ffmpeg_command, escape_ffmpeg_filter_path, format_srt_timestamp, write_subtitles
+from scripts.build_video import build_ffmpeg_command, collect_script_segments, escape_ffmpeg_filter_path, format_srt_timestamp, write_subtitles
 from scripts.check_publish_approval import main as check_publish_approval_main
 from scripts.common import extract_keywords, is_demo_mode, pick_topic_argument, slugify
 from scripts.generate_script import generate_script_demo
 from scripts.generate_thumbnail import generate_prompt
 from scripts.generate_tts import demo_synthesize, elevenlabs_synthesize, main as generate_tts_main
+from scripts.prepare_scenario import build_payload
 from scripts.topic_research import build_demo_videos, generate_topic_ideas_demo
 from scripts.upload_youtube import save_dry_run, upload_video
 
@@ -113,6 +114,17 @@ class PipelineHelpersTest(unittest.TestCase):
         finally:
             output_path.unlink(missing_ok=True)
 
+    def test_collect_script_segments_prefers_scene_narration(self) -> None:
+        segments = collect_script_segments(
+            {
+                "hook": "hook",
+                "outline": [{"heading": "outline"}],
+                "cta": "cta",
+                "scenes": [{"narration": "scene one"}, {"narration": "scene two"}],
+            }
+        )
+        self.assertEqual(segments, ["scene one", "scene two"])
+
     def test_build_ffmpeg_command_maps_input_audio_without_music(self) -> None:
         command = build_ffmpeg_command(
             [Path("bg1.png")],
@@ -124,6 +136,26 @@ class PipelineHelpersTest(unittest.TestCase):
         )
         map_indexes = [index for index, value in enumerate(command) if value == "-map"]
         self.assertEqual(command[map_indexes[-1] + 1], "1:a")
+
+    def test_prepare_scenario_builds_pipeline_payload(self) -> None:
+        payload = build_payload(
+            {
+                "title": "Free pipeline topic",
+                "description": "desc",
+                "tags": ["tag1", "tag2"],
+                "thumbnail_text": "free flow",
+                "scenes": [
+                    {"title": "Intro", "narration": "Первая сцена", "image_prompt": "first frame"},
+                    {"title": "Middle", "narration": "Вторая сцена", "image_prompt": "second frame"},
+                    {"title": "CTA", "narration": "Третья сцена", "image_prompt": "third frame"},
+                ],
+            }
+        )
+        self.assertEqual(payload["topic"], "Free pipeline topic")
+        self.assertEqual(payload["hook"], "Первая сцена")
+        self.assertEqual(payload["cta"], "Третья сцена")
+        self.assertEqual(payload["outline"][0]["heading"], "Middle")
+        self.assertEqual(payload["tts_text"], "Первая сцена\nВторая сцена\nТретья сцена")
 
     @patch("scripts.generate_tts.requests.post")
     def test_elevenlabs_synthesize_uses_expected_payload(self, post: MagicMock) -> None:
