@@ -26,14 +26,19 @@ def main() -> None:
         raise RuntimeError("Pass --video-id or --latest.")
 
     youtube = build("youtube", "v3", credentials=load_credentials())
+    current = youtube.videos().list(part="status", id=video_id).execute()
+    items = current.get("items", [])
+    if not items:
+        raise RuntimeError(f"Video not found: {video_id}")
+    status = items[0].get("status", {})
+    status["privacyStatus"] = args.privacy_status
+    status["selfDeclaredMadeForKids"] = False
+
     response = youtube.videos().update(
         part="status",
         body={
             "id": video_id,
-            "status": {
-                "privacyStatus": args.privacy_status,
-                "selfDeclaredMadeForKids": False,
-            },
+            "status": status,
         },
     ).execute()
     print(json.dumps(response, ensure_ascii=False, indent=2))
@@ -41,4 +46,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

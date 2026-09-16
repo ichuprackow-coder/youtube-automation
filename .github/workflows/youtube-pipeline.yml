@@ -98,7 +98,7 @@ jobs:
       - name: Upload to YouTube
         run: python scripts/upload_youtube.py --topic "${{ steps.select_topic.outputs.topic }}"
 
-      - name: Fetch first 24h analytics snapshot
+      - name: Fetch immediate analytics baseline
         run: python scripts/fetch_analytics.py --latest
 
       - name: Optional publish approval
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           python scripts/check_publish_approval.py --issue-number "${{ inputs.issue_number }}"
-          python -c 'import json; from pathlib import Path; data = json.loads(Path("data/publish_approval.json").read_text(encoding="utf-8")); import sys; sys.exit(0 if data["approved"] else "Publish approval not granted.")'
+          python -c 'import json, sys; from pathlib import Path; data = json.loads(Path("data/publish_approval.json").read_text(encoding="utf-8")); sys.stderr.write("" if data["approved"] else "Publish approval not granted.\n"); sys.exit(0 if data["approved"] else 1)'
           python scripts/publish_video.py --latest --privacy-status public
 
       - name: Upload artifacts

@@ -236,7 +236,7 @@ python scripts/upload_youtube.py --topic "Как войти в DevOps в 2026"
 
 В workflow добавлены:
 - уведомление в Telegram через Bot API
-- сбор аналитики за 24 часа в `data/analytics/`
+- моментальный baseline-снимок аналитики в `data/analytics/`
 - чтение CTR превью через `impressionsClickThroughRate`
 
 Локальный запуск аналитики:
@@ -244,6 +244,8 @@ python scripts/upload_youtube.py --topic "Как войти в DevOps в 2026"
 ```bash
 python scripts/fetch_analytics.py --latest
 ```
+
+Для полноценного 24-часового отчета повторно запустите `fetch_analytics.py --latest` через сутки после публикации или вынесите этот шаг в отдельный scheduled workflow.
 
 ## Дополнительно
 

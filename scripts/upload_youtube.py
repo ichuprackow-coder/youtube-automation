@@ -34,7 +34,7 @@ def load_credentials() -> Credentials:
         return creds
     if creds and creds.valid:
         return creds
-    if os.getenv("CI", "").lower() == "true":
+    if os.getenv("CI"):
         raise RuntimeError("Missing or invalid OAuth token in CI. Save config/token.json into YOUTUBE_TOKEN_JSON.")
     flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
     creds = flow.run_local_server(port=0)
@@ -117,4 +117,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

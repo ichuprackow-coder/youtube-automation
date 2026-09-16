@@ -30,6 +30,33 @@ class PipelineHelpersTest(unittest.TestCase):
         finally:
             temp_path.unlink(missing_ok=True)
 
+    def test_pick_topic_argument_matches_explicit_title(self) -> None:
+        temp_path = Path("tests/topics-fixture.json")
+        temp_path.write_text('{"ideas":[{"title":"A"},{"title":"B"}]}', encoding="utf-8")
+        try:
+            self.assertEqual(pick_topic_argument("B", temp_path)["title"], "B")
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_pick_topic_argument_creates_fallback_for_missing_title(self) -> None:
+        temp_path = Path("tests/topics-fixture.json")
+        temp_path.write_text('{"ideas":[{"title":"A"}]}', encoding="utf-8")
+        try:
+            topic = pick_topic_argument("C", temp_path)
+            self.assertEqual(topic["title"], "C")
+            self.assertEqual(topic["competition"], "unknown")
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_pick_topic_argument_raises_when_no_topics_exist(self) -> None:
+        temp_path = Path("tests/topics-fixture.json")
+        temp_path.write_text('{"ideas":[]}', encoding="utf-8")
+        try:
+            with self.assertRaises(RuntimeError):
+                pick_topic_argument(None, temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
     def test_srt_timestamp_format(self) -> None:
         self.assertEqual(format_srt_timestamp(65.432), "00:01:05,432")
 
