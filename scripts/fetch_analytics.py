@@ -13,12 +13,11 @@ from upload_youtube import load_credentials
 def fetch_video_analytics(video_id: str) -> dict:
     creds = load_credentials()
     analytics = build("youtubeAnalytics", "v2", credentials=creds)
-    end_date = date.today()
-    start_date = end_date - timedelta(days=1)
+    report_date = date.today() - timedelta(days=1)
     response = analytics.reports().query(
         ids="channel==MINE",
-        startDate=start_date.isoformat(),
-        endDate=end_date.isoformat(),
+        startDate=report_date.isoformat(),
+        endDate=report_date.isoformat(),
         metrics="views,likes,comments,estimatedMinutesWatched,impressions,impressionsClickThroughRate",
         filters=f"video=={video_id}",
     ).execute()
@@ -26,7 +25,7 @@ def fetch_video_analytics(video_id: str) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fetch 24-hour YouTube analytics for a video.")
+    parser = argparse.ArgumentParser(description="Fetch a completed daily YouTube analytics report for a video.")
     parser.add_argument("--topic", help="Topic title or slug")
     parser.add_argument("--latest", action="store_true", help="Use data/latest_upload.json")
     args = parser.parse_args()
@@ -58,4 +57,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from scripts.build_video import escape_ffmpeg_filter_path, format_srt_timestamp
+from scripts.build_video import escape_ffmpeg_filter_path, format_srt_timestamp, write_subtitles
+from scripts.check_publish_approval import main as check_publish_approval_main
 from scripts.common import extract_keywords, pick_topic_argument, slugify
 from scripts.generate_tts import elevenlabs_synthesize, main as generate_tts_main
 from scripts.upload_youtube import upload_video
@@ -77,6 +78,23 @@ class PipelineHelpersTest(unittest.TestCase):
     def test_ffmpeg_filter_path_escaping(self) -> None:
         escaped = escape_ffmpeg_filter_path(Path(r"/tmp/it's\test:01.srt"))
         self.assertEqual(escaped, r"/tmp/it\'s\\test\:01.srt")
+
+    def test_write_subtitles_avoids_zero_length_segments(self) -> None:
+        output_path = Path("tests/subtitles.srt")
+        try:
+            write_subtitles(
+                {
+                    "hook": "a",
+                    "outline": [{"heading": "b"}, {"heading": "c"}],
+                    "cta": "d",
+                },
+                output_path,
+                0.002,
+            )
+            content = output_path.read_text(encoding="utf-8")
+            self.assertIn("00:00:00,001", content)
+        finally:
+            output_path.unlink(missing_ok=True)
 
     @patch("scripts.generate_tts.requests.post")
     def test_elevenlabs_synthesize_uses_expected_payload(self, post: MagicMock) -> None:
@@ -156,6 +174,44 @@ class PipelineHelpersTest(unittest.TestCase):
         finally:
             for path in [video_path, thumb_path, log_path, latest_path]:
                 path.unlink(missing_ok=True)
+
+    @patch("scripts.check_publish_approval.get_issue")
+    def test_check_publish_approval_requires_label(self, get_issue: MagicMock) -> None:
+        approval_path = Path("data/publish_approval.json")
+        original_argv = sys.argv
+        get_issue.return_value = {"title": "Publish", "labels": [{"name": "publish-approved"}]}
+        try:
+            with patch.dict(
+                "os.environ",
+                {"GITHUB_REPOSITORY": "owner/repo", "GITHUB_TOKEN": "token"},
+                clear=False,
+            ):
+                sys.argv = ["check_publish_approval.py", "--issue-number", "12"]
+                check_publish_approval_main()
+            payload = approval_path.read_text(encoding="utf-8")
+            self.assertIn('"approved": true', payload)
+        finally:
+            sys.argv = original_argv
+            approval_path.unlink(missing_ok=True)
+
+    @patch("scripts.check_publish_approval.get_issue")
+    def test_check_publish_approval_rejects_without_label(self, get_issue: MagicMock) -> None:
+        approval_path = Path("data/publish_approval.json")
+        original_argv = sys.argv
+        get_issue.return_value = {"title": "Publish", "labels": [{"name": "needs-review"}]}
+        try:
+            with patch.dict(
+                "os.environ",
+                {"GITHUB_REPOSITORY": "owner/repo", "GITHUB_TOKEN": "token"},
+                clear=False,
+            ):
+                sys.argv = ["check_publish_approval.py", "--issue-number", "12"]
+                check_publish_approval_main()
+            payload = approval_path.read_text(encoding="utf-8")
+            self.assertIn('"approved": false', payload)
+        finally:
+            sys.argv = original_argv
+            approval_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

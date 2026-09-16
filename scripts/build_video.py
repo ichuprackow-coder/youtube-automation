@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -69,14 +70,19 @@ def write_subtitles(script_payload: dict, output_path: Path, total_duration: flo
     segments.append(script_payload["cta"])
     word_lengths = [max(len(segment.split()), 1) for segment in segments]
     total_words = sum(word_lengths)
-    cursor = 0.0
+    total_ms = max(int(round(total_duration * 1000)), len(segments))
+    cursor_ms = 0
     blocks = []
     for index, (segment, words) in enumerate(zip(segments, word_lengths), start=1):
-        segment_duration = total_duration * (words / total_words)
-        start = cursor
-        end = total_duration if index == len(segments) else cursor + segment_duration
-        blocks.append(f"{index}\n{format_srt_timestamp(start)} --> {format_srt_timestamp(end)}\n{segment}\n")
-        cursor = end
+        segment_ms = max(int(round(total_ms * (words / total_words))), 1)
+        start_ms = cursor_ms
+        end_ms = total_ms if index == len(segments) else min(cursor_ms + segment_ms, total_ms)
+        if end_ms <= start_ms:
+            end_ms = min(start_ms + 1, total_ms)
+        blocks.append(
+            f"{index}\n{format_srt_timestamp(start_ms / 1000)} --> {format_srt_timestamp(end_ms / 1000)}\n{segment}\n"
+        )
+        cursor_ms = end_ms
     output_path.write_text("\n".join(blocks), encoding="utf-8")
 
 
@@ -123,7 +129,7 @@ def build_ffmpeg_command(
 
     subtitle_path = escape_ffmpeg_filter_path(subtitles_path)
     filter_parts.append(
-        f"{video_label}subtitles='{subtitle_path}':force_style='Alignment=2,Fontsize=22,Outline=1,Shadow=1,MarginV=40'[video]"
+        f"{video_label}subtitles='{subtitle_path}':force_style='Alignment=2,Fontsize={int(os.getenv('SUBTITLE_FONT_SIZE', '36'))},Outline=1,Shadow=1,MarginV=40'[video]"
     )
 
     if music_path:
