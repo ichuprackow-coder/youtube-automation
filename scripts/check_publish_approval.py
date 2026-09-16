@@ -46,9 +46,7 @@ def main() -> None:
     issue = get_issue(owner, repo, args.issue_number, token)
     comments = get_comments(owner, repo, args.issue_number, token)
     labels = {label["name"] for label in issue.get("labels", [])}
-    approved = "publish-approved" in labels or "/publish" in issue.get("body", "").lower()
-    if not approved:
-        approved = any("/publish" in comment.get("body", "").lower() for comment in comments)
+    approved = "publish-approved" in labels
     payload = {
         "issue_number": args.issue_number,
         "approved": approved,

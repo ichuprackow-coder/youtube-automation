@@ -79,7 +79,7 @@ jobs:
           if [ -n "${{ inputs.topic }}" ]; then
             topic="${{ inputs.topic }}"
           else
-            topic="$(python -c 'import json; from pathlib import Path; data = json.loads(Path("data/topics.json").read_text(encoding="utf-8")); print(data["ideas"][0]["title"])')"
+            topic="$(python -c 'import sys; from pathlib import Path; sys.path.insert(0, str(Path("scripts").resolve())); from common import DATA_DIR, pick_topic_argument; print(pick_topic_argument(None, DATA_DIR / "topics.json")["title"])')"
           fi
           echo "topic=$topic" >> "$GITHUB_OUTPUT"
 

@@ -161,8 +161,9 @@ def pick_topic_argument(raw_topic: str | None, topics_path: Path) -> dict[str, A
     topics_payload = load_json(topics_path, default={})
     ideas = topics_payload.get("ideas", [])
     if raw_topic:
+        raw_slug = slugify(raw_topic)
         for idea in ideas:
-            if idea["title"].lower() == raw_topic.lower():
+            if idea["title"].lower() == raw_topic.lower() or slugify(idea["title"]) == raw_slug:
                 return idea
         return {"title": raw_topic, "angle": "", "keywords": [], "competition": "unknown"}
     for idea in ideas:

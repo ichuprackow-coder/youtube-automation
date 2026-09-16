@@ -254,7 +254,7 @@ python scripts/fetch_analytics.py --latest
 Рекомендуемый сценарий:
 1. В `.env`/Secrets держите `YOUTUBE_PRIVACY_STATUS=unlisted`
 2. Создаете GitHub Issue, например `Publish video 123`
-3. Добавляете label `publish-approved` или комментарий `/publish`
+3. Добавляете label `publish-approved`
 4. Запускаете:
 
 ```bash

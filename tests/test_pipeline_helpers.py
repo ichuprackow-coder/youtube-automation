@@ -38,6 +38,17 @@ class PipelineHelpersTest(unittest.TestCase):
         finally:
             temp_path.unlink(missing_ok=True)
 
+    def test_pick_topic_argument_matches_slugified_title(self) -> None:
+        temp_path = Path("tests/topics-fixture.json")
+        temp_path.write_text('{"ideas":[{"title":"Как войти в DevOps в 2026"}]}', encoding="utf-8")
+        try:
+            self.assertEqual(
+                pick_topic_argument("как-войти-в-devops-в-2026", temp_path)["title"],
+                "Как войти в DevOps в 2026",
+            )
+        finally:
+            temp_path.unlink(missing_ok=True)
+
     def test_pick_topic_argument_creates_fallback_for_missing_title(self) -> None:
         temp_path = Path("tests/topics-fixture.json")
         temp_path.write_text('{"ideas":[{"title":"A"}]}', encoding="utf-8")
